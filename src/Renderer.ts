@@ -270,10 +270,9 @@ function buildGun(camera: THREE.PerspectiveCamera): { gunGrp: THREE.Group; flash
   const gBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.35, 8), gMat);
   gBarrel.rotation.x = Math.PI / 2; gBarrel.position.set(0, 0.02, -0.4);
   gunGrp.add(gBarrel);
-  gunGrp.add(Object.assign(
-    new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.12, 0.45), new THREE.MeshBasicMaterial({ color: 0x00ff88 })),
-    { position: new THREE.Vector3(0.041, 0, 0) },
-  ));
+  const accent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.12, 0.45), new THREE.MeshBasicMaterial({ color: 0x00ff88 }));
+  accent.position.set(0.041, 0, 0);
+  gunGrp.add(accent);
   const flashMat = new THREE.MeshBasicMaterial({ color: 0xffff44, transparent: true, opacity: 0 });
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), flashMat);
   flash.position.set(0, 0.02, -0.62);

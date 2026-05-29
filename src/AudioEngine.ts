@@ -3,12 +3,18 @@ import type { GameState } from './GameState';
 let actx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 
+// iOS Safari requires webkitAudioContext fallback; creation must be inside a user-gesture handler
 export function initAudio(): void {
   if (actx) return;
-  actx = new AudioContext();
-  masterGain = actx.createGain();
-  masterGain.gain.value = 0.5;
-  masterGain.connect(actx.destination);
+  try {
+    const Ctx = (window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext);
+    actx = new Ctx();
+    masterGain = actx.createGain();
+    masterGain.gain.value = 0.5;
+    masterGain.connect(actx.destination);
+  } catch {
+    // Audio unavailable — game still works without sound
+  }
 }
 
 export function setVolume(state: GameState): void {

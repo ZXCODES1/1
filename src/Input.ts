@@ -84,7 +84,10 @@ export class Input {
       this.state.pitch = Math.max(-1.1, Math.min(1.1, this.state.pitch));
     });
     canvas.addEventListener('click', () => {
-      if (this.gameState.phase === 'playing') canvas.requestPointerLock();
+      // requestPointerLock is not supported on iOS — guard before calling
+      if (this.gameState.phase === 'playing' && canvas.requestPointerLock) {
+        canvas.requestPointerLock();
+      }
     });
     // hold left mouse to fire
     canvas.addEventListener('mousedown', (e) => {
