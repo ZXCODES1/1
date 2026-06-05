@@ -154,3 +154,19 @@ export function hudShowOverlay(
 export function hudHideOverlay(): void {
   el('overlay').style.display = 'none';
 }
+
+export function hudShowBossBar(show: boolean, name: string): void {
+  const bar = el('bossBar');
+  if (!bar) return;
+  bar.style.display = show ? 'flex' : 'none';
+  if (show) {
+    const nameEl = el('bossName');
+    if (nameEl) nameEl.textContent = name;
+    hudBossBar(1);
+  }
+}
+
+export function hudBossBar(pct: number): void {
+  const fill = el('bossFill');
+  if (fill) fill.style.width = Math.max(0, Math.min(1, pct)) * 100 + '%';
+}

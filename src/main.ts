@@ -1,6 +1,7 @@
 import { createGameState, type GameState } from './GameState';
-import { initAudio, setVolume, SFX } from './AudioEngine';
+import { initAudio, setVolume, SFX, startMusic } from './AudioEngine';
 import { initRenderer } from './Renderer';
+import { initPostFX } from './PostFX';
 import { Input } from './Input';
 import { Player } from './Player';
 import { WeaponSystem } from './WeaponSystem';
@@ -18,17 +19,21 @@ import type { PowerupKind } from './types';
 // ── Fixed-timestep constants ──────────────────────────────────────────────────
 const LOGIC_HZ = 60;
 const TICK_DT = 1 / LOGIC_HZ;
-const MAX_DELTA = 0.1; // cap so spiral-of-death can't happen
+const MAX_DELTA = 0.1;
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 const state: GameState = createGameState();
 const refs = initRenderer(state);
+const postFX = initPostFX(refs.renderer, refs.scene, refs.camera);
 const particles = new ParticleSystem(refs.scene, refs.camera);
 const enemyMgr = new EnemyManager(refs.scene, refs.camera, particles);
 const weaponSys = new WeaponSystem(refs.scene, refs.camera, refs.gunGrp, refs.flashMat);
 const player = new Player(refs.camera);
 const waveMgr = new WaveManager(refs.themeRefs, enemyMgr, weaponSys);
+
+weaponSys.setParticles(particles);
+enemyMgr.setPostFX(postFX);
 
 const input = new Input(refs.renderer.domElement, state, {
   onShoot: () => {
@@ -43,6 +48,12 @@ const input = new Input(refs.renderer.domElement, state, {
   onPause: () => togglePause(),
 });
 
+// ADS right-click
+refs.renderer.domElement.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (state.phase === 'playing') weaponSys.toggleADS();
+});
+
 weaponSys.updateHUD();
 
 // ── Overlay / settings wiring ─────────────────────────────────────────────────
@@ -55,7 +66,6 @@ const volSlider  = document.getElementById('volSlider') as HTMLInputElement;
 const sensSlider = document.getElementById('sensSlider') as HTMLInputElement;
 const qualSelect = document.getElementById('qualitySelect') as HTMLSelectElement;
 
-// Show high score on menu
 const hsEl = document.getElementById('highScoreDisplay');
 if (hsEl) hsEl.textContent = state.player.highScore > 0 ? 'HIGHSCORE: ' + state.player.highScore : '';
 
@@ -70,6 +80,7 @@ startBtn.addEventListener('click', () => {
   hudUpdateWave(state.player.wave);
   hudUpdateCash(state);
   waveMgr.startInitial(state);
+  startMusic(state.player.wave);
 });
 
 document.getElementById('resumeBtn')!.addEventListener('click', () => togglePause());
@@ -160,8 +171,8 @@ let accumulator = 0;
 function frame(now: number): void {
   requestAnimationFrame(frame);
 
-  // Always render — even in pause/menu so screen shake still applies
-  refs.renderer.render(refs.scene, refs.camera);
+  postFX.update(now * 0.001);
+  postFX.composer.render();
 
   if (state.phase !== 'playing') { lastTime = now; return; }
 
@@ -174,56 +185,39 @@ function frame(now: number): void {
     accumulator -= TICK_DT;
   }
 
-  // Gun sway is purely visual — driven by real time, not game ticks
   const t = now * 0.003;
   const moving = input.state.moveX !== 0 || input.state.moveY !== 0;
-  weaponSys.animateGun(moving, t);
+  const sprinting = false;
+  weaponSys.animateGun(moving, sprinting, t);
 }
 
 function tick(_dt: number): void {
   if (state.phase !== 'playing') return;
 
-  // 1. Read keyboard move axes
   input.readKeyboardMove();
-
-  // 2. Player movement + camera rotation
   player.update(state, input.state);
-
-  // 3. Weapon bullets advance
   weaponSys.updateBullets();
 
-  // 4. Bullet–enemy raycasting
   enemyMgr.checkBulletHits(
     weaponSys.activeBullets,
     state,
     { onEnemyKilled: () => weaponSys.onEnemyKilled() },
   );
 
-  // 5. Enemy AI + melee
   enemyMgr.updateEnemies(state, (dmg) => {
     player.takeDamage(dmg, state, endGame);
     hudUpdateCash(state);
   });
 
-  // 6. Enemy bullets
   enemyMgr.updateEnemyBullets((dmg) => {
     player.takeDamage(dmg, state, endGame);
     hudUpdateCash(state);
   });
 
-  // 7. Powerup pickup
   enemyMgr.updatePowerups(state, collectPowerup);
-
-  // 8. Particles
   particles.update();
-
-  // 9. Wave progression
   waveMgr.tick(state);
-
-  // 10. Kill-streak multiplier decay
   tickMultiplier(state);
-
-  // 11. HUD cash/multiplier sync
   hudUpdateCash(state);
 }
 

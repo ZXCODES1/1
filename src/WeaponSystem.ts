@@ -4,6 +4,7 @@ import type { GameState } from './GameState';
 import { SFX } from './AudioEngine';
 import { rebuildGun } from './Renderer';
 import { hudUpdateAmmo, hudShowReloadBar, hudUpdateWeapon, hudUpgradeAnnounce } from './HUD';
+import type { ParticleSystem } from './ParticleSystem';
 
 export const WEAPONS: WeaponDef[] = [
   { name: 'PISTOL',   kills: 3,   damage: 1, fireRate: 140, ammo: 12, spread: 0.030, speed: 1.1, bullets: 1, color: 0xffff44, barrelLen: 0.35, glow: '#ffff44' },
@@ -19,13 +20,20 @@ export class WeaponSystem {
   level = 0;
   killsOnLevel = 0;
   gunRecoil = 0;
+  gunRecoilRot = 0;
+  ads = false;
 
   private lastFireTime = 0;
   private pool: PooledBullet[] = [];
   private camera: THREE.PerspectiveCamera;
   private gunGrp: THREE.Group;
   private flashMat: THREE.MeshBasicMaterial;
+  private muzzleLight: THREE.PointLight;
   private reloadTimeout: ReturnType<typeof setTimeout> | null = null;
+  private particles: ParticleSystem | null = null;
+  // ADS interpolation
+  private adsFov = 72;
+  private adsProgress = 0; // 0=hip, 1=ads
 
   constructor(
     scene: THREE.Scene,
@@ -37,6 +45,10 @@ export class WeaponSystem {
     this.gunGrp = gunGrp;
     this.flashMat = flashMat;
 
+    // Dynamic muzzle light — hidden until shot
+    this.muzzleLight = new THREE.PointLight(0xffff44, 0, 8);
+    scene.add(this.muzzleLight);
+
     const geo = new THREE.SphereGeometry(0.04, 5, 5);
     for (let i = 0; i < BULLET_POOL_SIZE; i++) {
       const mat = new THREE.MeshBasicMaterial({ color: 0xffff44 });
@@ -47,8 +59,14 @@ export class WeaponSystem {
     }
   }
 
+  setParticles(p: ParticleSystem): void { this.particles = p; }
+
   get activeBullets(): PooledBullet[] { return this.pool; }
   get currentWeapon(): WeaponDef { return WEAPONS[this.level]; }
+
+  toggleADS(): void {
+    this.ads = !this.ads;
+  }
 
   shoot(gameState: GameState): void {
     const { player, perks } = gameState;
@@ -67,7 +85,14 @@ export class WeaponSystem {
     else if (w.name === 'RAILGUN') SFX.rail();
     else SFX.shoot(this.level);
 
+    const spreadMul = this.ads ? 0.4 : 1.0;
     const dmgMul = Date.now() < gameState.damageBoostUntil ? 2 : 1;
+
+    // Muzzle world position (approx gun tip)
+    const muzzlePos = this.camera.position.clone();
+    const fwd = new THREE.Vector3();
+    this.camera.getWorldDirection(fwd);
+    muzzlePos.addScaledVector(fwd, 0.7);
 
     for (let s = 0; s < w.bullets; s++) {
       const slot = this.pool.find(b => !b.active);
@@ -75,8 +100,8 @@ export class WeaponSystem {
 
       const dir = new THREE.Vector3();
       this.camera.getWorldDirection(dir);
-      dir.x += (Math.random() - 0.5) * w.spread;
-      dir.y += (Math.random() - 0.5) * w.spread * 0.5;
+      dir.x += (Math.random() - 0.5) * w.spread * spreadMul;
+      dir.y += (Math.random() - 0.5) * w.spread * 0.5 * spreadMul;
       dir.normalize();
 
       (slot.mesh.material as THREE.MeshBasicMaterial).color.setHex(w.color);
@@ -88,9 +113,21 @@ export class WeaponSystem {
       slot.mesh.visible = true;
     }
 
+    // Muzzle flash light burst
+    this.muzzleLight.color.setHex(w.color);
+    this.muzzleLight.intensity = 8 + this.level * 2;
+    this.muzzleLight.position.copy(muzzlePos);
+    setTimeout(() => { this.muzzleLight.intensity = 0; }, 80);
+
+    // Muzzle sparks
+    if (this.particles) {
+      this.particles.spawnMuzzleSparks(muzzlePos, fwd, w.color);
+    }
+
     this.flashMat.opacity = 1;
     setTimeout(() => { this.flashMat.opacity = 0; }, 60);
-    this.gunRecoil = 0.05 + this.level * 0.005;
+    this.gunRecoil = 0.06 + this.level * 0.008;
+    this.gunRecoilRot = 0.04 + this.level * 0.005;
 
     if (player.ammo === 0) this.startReload(gameState);
   }
@@ -99,6 +136,8 @@ export class WeaponSystem {
     const { player, perks } = gameState;
     if (player.reloading) return;
     player.reloading = true;
+    this.ads = false;
+    this.adsProgress = 0;
     SFX.reload();
     const reloadMs = Math.max(600, 1850 - this.level * 200);
     hudShowReloadBar(true, reloadMs);
@@ -127,6 +166,8 @@ export class WeaponSystem {
     this.killsOnLevel = 0;
     const w = this.currentWeapon;
     this.flashMat = rebuildGun(this.gunGrp, this.camera, this.level, w.color, w.barrelLen, w.bullets);
+    // Update muzzle light back into scene (rebuildGun re-adds gunGrp to camera)
+    this.muzzleLight.color.setHex(w.color);
     hudUpgradeAnnounce(w.name);
     SFX.upgrade();
     this.updateHUD();
@@ -140,7 +181,6 @@ export class WeaponSystem {
     hudUpdateWeapon(w.name, pct, killsText, w.glow);
   }
 
-  /** Advance bullet pool each tick; returns list of still-active bullets */
   updateBullets(): void {
     for (const b of this.pool) {
       if (!b.active) continue;
@@ -155,14 +195,52 @@ export class WeaponSystem {
     b.mesh.visible = false;
   }
 
-  animateGun(moving: boolean, t: number): void {
-    this.gunGrp.position.y = -0.18 + (moving ? Math.sin(t * 2.2) * 0.013 : 0);
+  animateGun(moving: boolean, sprinting: boolean, t: number): void {
+    // ADS lerp
+    const adsTarget = this.ads ? 1 : 0;
+    this.adsProgress += (adsTarget - this.adsProgress) * 0.12;
+
+    // FOV lerp (hip=72, ads=52)
+    this.adsFov += ((this.ads ? 52 : 72) - this.adsFov) * 0.1;
+    this.camera.fov = this.adsFov;
+    this.camera.updateProjectionMatrix();
+
+    // ADS position (center screen when in ADS)
+    const hipX = 0.22, adsX = 0.0;
+    const hipZ = -0.4, adsZ = -0.28;
+    this.gunGrp.position.x = hipX + (adsX - hipX) * this.adsProgress;
+    const baseZ = hipZ + (adsZ - hipZ) * this.adsProgress;
+
+    // Recoil kick
     if (this.gunRecoil > 0) {
-      this.gunGrp.position.z = -0.4 + this.gunRecoil;
-      this.gunRecoil -= 0.005;
+      this.gunGrp.position.z = baseZ + this.gunRecoil;
+      this.gunGrp.rotation.x = -this.gunRecoilRot;
+      this.gunRecoil -= 0.006;
+      this.gunRecoilRot -= 0.003;
     } else {
-      this.gunGrp.position.z = -0.4;
+      this.gunGrp.position.z = baseZ;
+      this.gunGrp.rotation.x = 0;
       this.gunRecoil = 0;
+      this.gunRecoilRot = 0;
+    }
+
+    // Lissajous idle sway (figure-8)
+    const swayAmt = this.ads ? 0.002 : 0.006;
+    const swayBase = moving ? 0.0 : swayAmt;
+    this.gunGrp.position.x += Math.sin(t * 0.9) * swayBase;
+    this.gunGrp.position.y = -0.18 + Math.sin(t * 1.8) * swayBase * 0.5;
+
+    // Walk bob
+    if (moving && !sprinting) {
+      this.gunGrp.position.y += Math.sin(t * 4.4) * 0.012;
+      this.gunGrp.position.x += Math.cos(t * 2.2) * 0.006;
+    }
+    // Sprint tilt
+    if (sprinting) {
+      this.gunGrp.position.y += Math.sin(t * 6) * 0.018;
+      this.gunGrp.rotation.z = THREE.MathUtils.lerp(this.gunGrp.rotation.z, -0.35, 0.1);
+    } else {
+      this.gunGrp.rotation.z = THREE.MathUtils.lerp(this.gunGrp.rotation.z, 0, 0.1);
     }
   }
 }
