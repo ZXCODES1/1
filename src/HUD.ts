@@ -168,6 +168,10 @@ export function hudRadar(
   // cross hairs
   ctx.strokeStyle = 'rgba(0,255,136,0.15)';
   ctx.beginPath(); ctx.moveTo(r, 4); ctx.lineTo(r, size - 4); ctx.moveTo(4, r); ctx.lineTo(size - 4, r); ctx.stroke();
+  // Range ring
+  ctx.strokeStyle = 'rgba(0,255,136,0.08)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.arc(r, r, r * 0.5, 0, Math.PI * 2); ctx.stroke();
 
   // enemy blips (rotate world into player-facing space)
   for (const e of enemies) {
@@ -193,12 +197,27 @@ export function hudRadar(
 // ── Directional damage indicators ───────────────────────────────────────────
 export function hudDamageDir(angleRad: number): void {
   const hud = el('hud');
+  // Remove excess indicators to prevent screen coverage
+  const existing = hud.querySelectorAll('.dmg-dir');
+  if (existing.length >= 3) existing[0].remove();
   const ind = document.createElement('div');
   ind.className = 'dmg-dir';
-  // angle: 0 = front, rotate the arc around screen centre
   ind.style.transform = `translate(-50%,-50%) rotate(${angleRad}rad)`;
   hud.appendChild(ind);
-  setTimeout(() => ind.remove(), 800);
+  setTimeout(() => ind.remove(), 450);
+}
+
+export function hudCrosshairFire(): void {
+  const ch = el('crosshair');
+  ch.classList.add('fired');
+  setTimeout(() => ch.classList.remove('fired'), 80);
+}
+
+export function hudKillFlash(): void {
+  const kf = el('killFlash');
+  if (!kf) return;
+  kf.style.opacity = '1';
+  setTimeout(() => { kf.style.opacity = '0'; }, 60);
 }
 
 export function hudPowerupAnnounce(label: string): void {

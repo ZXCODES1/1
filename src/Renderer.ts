@@ -175,9 +175,9 @@ export function initRenderer(gameState: GameState): SceneRefs {
         vec2 g = abs(fract(vUv * 30.0 - 0.5) - 0.5) / fwidth(vUv * 30.0);
         float line = 1.0 - min(min(g.x, g.y), 1.0);
         // travelling pulse wave across the grid
-        float wave = 0.55 + 0.45 * sin(vUv.x * 12.0 + vUv.y * 12.0 - time * 3.0);
+        float wave = 0.65 + 0.35 * sin(vUv.x * 12.0 + vUv.y * 12.0 - time * 3.0);
         float edgeFade = 1.0 - smoothstep(0.30, 0.5, length(vUv - 0.5));
-        gl_FragColor = vec4(color * line * wave, line * edgeFade * 0.45);
+        gl_FragColor = vec4(color * line * wave, line * edgeFade * 0.22);
       }
     `,
   });
@@ -187,7 +187,7 @@ export function initRenderer(gameState: GameState): SceneRefs {
   scene.add(neonGrid);
 
   // ── Atmospheric floating dust / embers ─────────────────────────────────────
-  const DUST_COUNT = 600;
+  const DUST_COUNT = 300;
   const dustPos = new Float32Array(DUST_COUNT * 3);
   for (let i = 0; i < DUST_COUNT; i++) {
     dustPos[i * 3]     = (Math.random() - 0.5) * 60;

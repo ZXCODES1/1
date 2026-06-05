@@ -3,7 +3,7 @@ import type { WeaponDef, PooledBullet } from './types';
 import type { GameState } from './GameState';
 import { SFX } from './AudioEngine';
 import { rebuildGun } from './Renderer';
-import { hudUpdateAmmo, hudShowReloadBar, hudUpdateWeapon, hudUpgradeAnnounce } from './HUD';
+import { hudUpdateAmmo, hudShowReloadBar, hudUpdateWeapon, hudUpgradeAnnounce, hudCrosshairFire, hudKillFlash } from './HUD';
 import type { ParticleSystem } from './ParticleSystem';
 
 export const WEAPONS: WeaponDef[] = [
@@ -87,6 +87,7 @@ export class WeaponSystem {
     if (w.name === 'SHOTGUN') SFX.shotgun();
     else if (w.name === 'RAILGUN') SFX.rail();
     else SFX.shoot(this.level);
+    hudCrosshairFire();
 
     const spreadMul = this.ads ? 0.4 : 1.0;
     const dmgMul = Date.now() < gameState.damageBoostUntil ? 2 : 1;
@@ -165,6 +166,7 @@ export class WeaponSystem {
   }
 
   onEnemyKilled(): void {
+    hudKillFlash();
     this.killsOnLevel++;
     const w = this.currentWeapon;
     if (this.level < WEAPONS.length - 1 && this.killsOnLevel >= w.kills) {
