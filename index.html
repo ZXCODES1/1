@@ -48,13 +48,13 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
   display:flex; flex-direction:column; gap:5px;
 }
 #hpLabel { color:var(--green); font-size:9px; letter-spacing:3px; }
-#hpTrack { width:130px; height:6px; border:1px solid rgba(0,255,136,0.4); background:rgba(0,255,136,0.05); }
-#hpFill { height:100%; width:100%; background:linear-gradient(90deg,var(--green),#00ccff); transition:width 0.3s; }
+#hpTrack { width:140px; height:8px; border:1px solid rgba(0,255,136,0.5); background:rgba(0,0,0,0.5); border-radius:2px; }
+#hpFill { height:100%; width:100%; background:linear-gradient(90deg,#00ff44,#00ffcc); transition:width 0.25s; border-radius:2px; box-shadow:0 0 8px rgba(0,255,136,0.6); }
 
 #ammoBox {
   position:absolute; top:20px; right:20px; text-align:right;
 }
-#ammoNum { font-size:clamp(28px,8vw,44px); color:#fff; text-shadow:0 0 18px var(--green); line-height:1; }
+#ammoNum { font-size:clamp(32px,9vw,52px); color:#fff; text-shadow:0 0 20px var(--green), 0 0 40px rgba(0,255,136,0.3); line-height:1; font-weight:900; }
 #ammoLabel { font-size:9px; color:#004422; letter-spacing:3px; }
 
 #scoreBox {
@@ -66,14 +66,25 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
 
 #crosshair {
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  width:28px; height:28px; pointer-events:none;
+  width:24px; height:24px; pointer-events:none; transition:width 0.08s, height 0.08s;
 }
-#crosshair::before, #crosshair::after {
-  content:''; position:absolute; background:rgba(0,255,136,0.9);
-  box-shadow:0 0 6px var(--green);
+#crosshair span {
+  position:absolute; width:6px; height:6px;
+  border-color:rgba(0,255,136,0.95); border-style:solid;
+  filter:drop-shadow(0 0 3px rgba(0,255,136,0.8));
 }
-#crosshair::before { width:2px; height:100%; left:50%; transform:translateX(-50%); }
-#crosshair::after  { height:2px; width:100%; top:50%; transform:translateY(-50%); }
+#crosshair span:nth-child(1){ top:0; left:0; border-width:1.5px 0 0 1.5px; }
+#crosshair span:nth-child(2){ top:0; right:0; border-width:1.5px 1.5px 0 0; }
+#crosshair span:nth-child(3){ bottom:0; left:0; border-width:0 0 1.5px 1.5px; }
+#crosshair span:nth-child(4){ bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
+#crosshair.fired { width:34px; height:34px; }
+#crosshair.fired span { border-color:rgba(255,220,0,0.9); filter:drop-shadow(0 0 4px rgba(255,200,0,0.8)); }
+#crosshairDot {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:2px; height:2px; border-radius:50%;
+  background:rgba(0,255,136,0.9); pointer-events:none;
+  box-shadow:0 0 4px rgba(0,255,136,0.8);
+}
 
 #hitmarker {
   position:absolute; top:50%; left:50%; width:22px; height:22px;
@@ -159,7 +170,8 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
 }
 #bossName { color:#ff4400; font-size:11px; letter-spacing:4px; text-shadow:0 0 12px #ff4400; }
 #bossTrack { width:260px; height:8px; border:1px solid rgba(255,68,0,0.5); background:rgba(255,68,0,0.1); }
-#bossFill { height:100%; width:100%; background:linear-gradient(90deg,#ff2200,#ff8800); transition:width 0.2s; box-shadow:0 0 10px #ff4400; }
+#bossFill { height:100%; width:100%; background:linear-gradient(90deg,#ff2200,#ff8800,#ffdd00); transition:width 0.2s; box-shadow:0 0 14px #ff4400; animation:bossPulse 1.2s ease-in-out infinite; }
+@keyframes bossPulse { 0%,100%{box-shadow:0 0 10px #ff4400;} 50%{box-shadow:0 0 24px #ff8800, 0 0 40px #ff4400;} }
 
 .floatnum { position:absolute; font-family:'Courier New',monospace; font-weight:900; font-size:clamp(14px,4vw,20px); text-shadow:0 0 6px rgba(0,0,0,0.8); pointer-events:none; transform:translate(-50%,-50%); z-index:90; }
 
@@ -270,25 +282,43 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
 }
 #sprintBtn.active { background:rgba(0,200,255,0.45); box-shadow:0 0 20px rgba(0,200,255,0.6); }
 
-#radarBox { position:absolute; top:46px; left:16px; opacity:0.9; }
-#radar { display:block; width:104px; height:104px; }
+#radarBox {
+  position:absolute; bottom:240px; right:20px;
+  border-radius:50%; overflow:hidden;
+  box-shadow:0 0 10px rgba(0,255,136,0.25); opacity:0.82;
+}
+#radar { display:block; width:72px; height:72px; }
 
 .dmg-dir {
-  position:absolute; top:50%; left:50%; width:240px; height:240px;
-  transform-origin:center; pointer-events:none; animation:ddFade 0.8s forwards;
+  position:absolute; top:50%; left:50%; width:120px; height:120px;
+  transform-origin:center; pointer-events:none; animation:ddFade 0.45s forwards;
 }
 .dmg-dir::before {
-  content:''; position:absolute; top:-6px; left:50%; transform:translateX(-50%);
-  width:120px; height:46px;
-  background:radial-gradient(ellipse at center top, rgba(255,30,30,0.85), rgba(255,0,0,0) 70%);
+  content:''; position:absolute; top:-2px; left:50%; transform:translateX(-50%);
+  width:50px; height:22px;
+  background:radial-gradient(ellipse at center top, rgba(255,40,40,0.65), transparent 100%);
 }
 @keyframes ddFade { 0%{opacity:1;} 100%{opacity:0;} }
+
+/* Atmospheric scan-line overlay */
+#scanlines {
+  position:fixed; inset:0; z-index:50; pointer-events:none;
+  background:repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+}
+
+/* Kill flash edge effect */
+#killFlash {
+  position:absolute; inset:0; pointer-events:none; opacity:0;
+  background:radial-gradient(ellipse at center, transparent 60%, rgba(255,255,255,0.15) 100%);
+  transition:opacity 0.05s;
+}
 </style>
-  <script type="module" crossorigin src="./assets/index-DHKaiTTy.js"></script>
+  <script type="module" crossorigin src="./assets/index-B8eaLlMF.js"></script>
 </head>
 <body>
 
 <canvas id="c"></canvas>
+<div id="scanlines"></div>
 
 <div id="hud">
   <div id="healthBar">
@@ -305,7 +335,8 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
     <div id="multNum" style="opacity:0.3">x1</div>
   </div>
   <div id="cashBox"><span id="cashNum">$0</span></div>
-  <div id="crosshair"></div>
+  <div id="crosshair"><span></span><span></span><span></span><span></span></div>
+  <div id="crosshairDot"></div>
   <div id="hitmarker"></div>
   <div id="lowHpPulse"></div>
   <div id="dmgVignette"></div>
@@ -325,7 +356,8 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
     <div id="bossName">BOSS</div>
     <div id="bossTrack"><div id="bossFill"></div></div>
   </div>
-  <div id="radarBox"><canvas id="radar" width="124" height="124"></canvas></div>
+  <div id="radarBox"><canvas id="radar" width="72" height="72"></canvas></div>
+  <div id="killFlash"></div>
 </div>
 
 <div id="shopPanel">
