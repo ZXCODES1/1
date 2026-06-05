@@ -251,8 +251,40 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
   width:55%; height:80%;
   pointer-events:all;
 }
+
+#grenadeBtn {
+  position:absolute; bottom:108px; right:100px;
+  width:50px; height:50px; border-radius:50%;
+  background:rgba(136,255,0,0.12); border:2px solid rgba(136,255,0,0.6);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  color:#aaff44; font-size:18px; pointer-events:all; cursor:pointer;
+  box-shadow:0 0 16px rgba(136,255,0,0.3);
+}
+#grenadeBtn #grenadeCount { font-size:10px; }
+#sprintBtn {
+  position:absolute; bottom:170px; left:40px;
+  width:48px; height:48px; border-radius:50%;
+  background:rgba(0,200,255,0.12); border:2px solid rgba(0,200,255,0.5);
+  display:flex; align-items:center; justify-content:center;
+  color:#33ccff; font-size:18px; pointer-events:all; cursor:pointer;
+}
+#sprintBtn.active { background:rgba(0,200,255,0.45); box-shadow:0 0 20px rgba(0,200,255,0.6); }
+
+#radarBox { position:absolute; top:46px; left:16px; opacity:0.9; }
+#radar { display:block; width:104px; height:104px; }
+
+.dmg-dir {
+  position:absolute; top:50%; left:50%; width:240px; height:240px;
+  transform-origin:center; pointer-events:none; animation:ddFade 0.8s forwards;
+}
+.dmg-dir::before {
+  content:''; position:absolute; top:-6px; left:50%; transform:translateX(-50%);
+  width:120px; height:46px;
+  background:radial-gradient(ellipse at center top, rgba(255,30,30,0.85), rgba(255,0,0,0) 70%);
+}
+@keyframes ddFade { 0%{opacity:1;} 100%{opacity:0;} }
 </style>
-  <script type="module" crossorigin src="./assets/index-DRTYQNxy.js"></script>
+  <script type="module" crossorigin src="./assets/index-DHKaiTTy.js"></script>
 </head>
 <body>
 
@@ -293,6 +325,7 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
     <div id="bossName">BOSS</div>
     <div id="bossTrack"><div id="bossFill"></div></div>
   </div>
+  <div id="radarBox"><canvas id="radar" width="124" height="124"></canvas></div>
 </div>
 
 <div id="shopPanel">
@@ -346,6 +379,8 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
   </div>
   <div id="fireBtn">FIRE</div>
   <div id="reloadBtn">RELOAD</div>
+  <div id="grenadeBtn"><span>✸</span><span id="grenadeCount">3</span></div>
+  <div id="sprintBtn">⏩</div>
   <div id="pauseBtn">❚❚</div>
   <div id="nukeBtn"><span>☢</span><span id="nukeCount">0</span></div>
 </div>
@@ -356,9 +391,9 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
   <button id="startBtn">SPIELEN</button>
   <div id="highScoreDisplay"></div>
   <div id="controls-hint">
-    LINKER STICK = BEWEGEN<br>
-    RECHTS WISCHEN = ZIELEN<br>
-    FIRE BUTTON = SCHIESSEN
+    STICK / WASD = BEWEGEN &nbsp;•&nbsp; WISCHEN / MAUS = ZIELEN<br>
+    FIRE = SCHIESSEN &nbsp;•&nbsp; ⏩/SHIFT = SPRINT &nbsp;•&nbsp; ✸/G = GRANATE<br>
+    RECHTSKLICK / Q = ZIELEN (ADS) &nbsp;•&nbsp; R = NACHLADEN
   </div>
 </div>
 
