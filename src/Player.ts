@@ -50,9 +50,11 @@ export class Player {
     this.camera.position.x = Math.max(-ARENA_BOUND, Math.min(ARENA_BOUND, this.camera.position.x));
     this.camera.position.z = Math.max(-ARENA_BOUND, Math.min(ARENA_BOUND, this.camera.position.z));
 
-    // Apply camera rotation from input
+    // Apply camera rotation from input, plus transient recoil kick
     this.camera.rotation.y = input.yaw;
-    this.camera.rotation.x = input.pitch;
+    this.camera.rotation.x = input.pitch + state.camKick;
+    state.camKick *= 0.78;
+    if (state.camKick < 0.0005) state.camKick = 0;
 
     // Screen shake decay
     if (state.screenShake > 0.001) {

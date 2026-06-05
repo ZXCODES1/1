@@ -17,6 +17,8 @@ export interface GameState {
   phase: GamePhase;
   settings: GameSettings;
   screenShake: number;
+  /** transient upward view recoil applied on top of player pitch, decays each tick */
+  camKick: number;
   scoreMultiplier: number;
   killStreak: number;
   lastKillTime: number;
@@ -54,6 +56,7 @@ export function createGameState(): GameState {
       quality: 'medium',
     },
     screenShake: 0,
+    camKick: 0,
     scoreMultiplier: 1,
     killStreak: 0,
     lastKillTime: 0,

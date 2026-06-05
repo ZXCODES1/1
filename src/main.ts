@@ -171,6 +171,7 @@ let accumulator = 0;
 function frame(now: number): void {
   requestAnimationFrame(frame);
 
+  refs.animateEnv(now * 0.001);
   postFX.update(now * 0.001);
   postFX.composer.render();
 

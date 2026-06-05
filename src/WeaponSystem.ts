@@ -119,15 +119,21 @@ export class WeaponSystem {
     this.muzzleLight.position.copy(muzzlePos);
     setTimeout(() => { this.muzzleLight.intensity = 0; }, 80);
 
-    // Muzzle sparks
+    // Muzzle sparks + ejected brass shells
     if (this.particles) {
       this.particles.spawnMuzzleSparks(muzzlePos, fwd, w.color);
+      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+      this.particles.spawnShells(this.camera.position.clone().addScaledVector(fwd, 0.3).addScaledVector(right, 0.15).setY(this.camera.position.y - 0.1), right);
     }
 
     this.flashMat.opacity = 1;
     setTimeout(() => { this.flashMat.opacity = 0; }, 60);
     this.gunRecoil = 0.06 + this.level * 0.008;
     this.gunRecoilRot = 0.04 + this.level * 0.005;
+
+    // Camera recoil kick — stronger weapons kick harder, ADS reduces it
+    const kick = (0.012 + this.level * 0.004) * (this.ads ? 0.5 : 1);
+    gameState.camKick = Math.min(0.12, gameState.camKick + kick);
 
     if (player.ammo === 0) this.startReload(gameState);
   }

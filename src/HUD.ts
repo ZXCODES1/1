@@ -12,6 +12,9 @@ export function hudShow(show: boolean): void {
 export function hudUpdateHealth(state: GameState): void {
   const pct = (state.player.health / state.player.maxHealth) * 100;
   el('hpFill').style.width = Math.max(0, pct) + '%';
+  const low = el('lowHpPulse');
+  if (pct <= 30 && state.player.alive) low.classList.add('active');
+  else low.classList.remove('active');
 }
 
 export function hudUpdateAmmo(ammo: number): void {
@@ -115,6 +118,14 @@ export function hudCrosshairHit(): void {
   ch.style.borderColor = '#ff4444';
   ch.style.color = '#ff4444';
   setTimeout(() => { ch.style.color = 'var(--green)'; }, 100);
+}
+
+export function hudHitmarker(kill = false): void {
+  const hm = el('hitmarker');
+  hm.classList.remove('show', 'kill');
+  // force reflow so the animation restarts on rapid hits
+  void hm.offsetWidth;
+  hm.classList.add(kill ? 'kill' : 'show');
 }
 
 export function hudNukeBtn(stock: number): void {

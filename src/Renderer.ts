@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { ThemeRefs } from './LevelThemes';
 import type { GameState } from './GameState';
 
@@ -9,6 +10,7 @@ export interface SceneRefs {
   gunGrp: THREE.Group;
   flashMat: THREE.MeshBasicMaterial;
   themeRefs: ThemeRefs;
+  animateEnv(time: number): void;
 }
 
 // ── Procedural textures ───────────────────────────────────────────────────────
@@ -63,17 +65,22 @@ export function initRenderer(gameState: GameState): SceneRefs {
   const W = window.innerWidth;
   const H = window.innerHeight;
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: gameState.settings.quality !== 'low' });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: gameState.settings.quality !== 'low', powerPreference: 'high-performance' });
   renderer.setSize(W, H);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, gameState.settings.quality === 'high' ? 2 : 1));
   renderer.shadowMap.enabled = gameState.settings.quality !== 'low';
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.15;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x9bb8d4);
   scene.fog = new THREE.Fog(0x9bb8d4, 40, 130);
+
+  // PBR image-based lighting — metallic surfaces now reflect a real environment
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
   const camera = new THREE.PerspectiveCamera(72, W / H, 0.1, 300);
   camera.position.set(0, 1.7, 0);
@@ -122,17 +129,75 @@ export function initRenderer(gameState: GameState): SceneRefs {
   terrain.receiveShadow = true;
   scene.add(terrain);
 
+  // ── Animated neon grid floor (cyberpunk glow) ──────────────────────────────
+  const gridMat = new THREE.ShaderMaterial({
+    uniforms: {
+      time:  { value: 0 },
+      color: { value: new THREE.Color(0x00ffaa) },
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    vertexShader: /* glsl */`
+      varying vec2 vUv;
+      void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+    `,
+    fragmentShader: /* glsl */`
+      varying vec2 vUv;
+      uniform float time;
+      uniform vec3 color;
+      void main(){
+        vec2 g = abs(fract(vUv * 30.0 - 0.5) - 0.5) / fwidth(vUv * 30.0);
+        float line = 1.0 - min(min(g.x, g.y), 1.0);
+        // travelling pulse wave across the grid
+        float wave = 0.55 + 0.45 * sin(vUv.x * 12.0 + vUv.y * 12.0 - time * 3.0);
+        float edgeFade = 1.0 - smoothstep(0.30, 0.5, length(vUv - 0.5));
+        gl_FragColor = vec4(color * line * wave, line * edgeFade * 0.45);
+      }
+    `,
+  });
+  const neonGrid = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), gridMat);
+  neonGrid.rotation.x = -Math.PI / 2;
+  neonGrid.position.y = 0.02;
+  scene.add(neonGrid);
+
+  // ── Atmospheric floating dust / embers ─────────────────────────────────────
+  const DUST_COUNT = 600;
+  const dustPos = new Float32Array(DUST_COUNT * 3);
+  for (let i = 0; i < DUST_COUNT; i++) {
+    dustPos[i * 3]     = (Math.random() - 0.5) * 60;
+    dustPos[i * 3 + 1] = Math.random() * 18;
+    dustPos[i * 3 + 2] = (Math.random() - 0.5) * 60;
+  }
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+  const dustMat = new THREE.PointsMaterial({
+    color: 0xaad8ff, size: 0.07, transparent: true, opacity: 0.5,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+  });
+  const dust = new THREE.Points(dustGeo, dustMat);
+  scene.add(dust);
+
   // Perimeter walls
   const concreteMat = new THREE.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.9 });
   const wallDefs: [number, number, number, number, number, number][] = [
     [60, 3, 1, 0, 1.5, -30], [60, 3, 1, 0, 1.5, 30],
     [1, 3, 60, -30, 1.5, 0],  [1, 3, 60, 30, 1.5, 0],
   ];
+  const neonTrimMat = new THREE.MeshStandardMaterial({ color: 0x002222, emissive: 0x00ffcc, emissiveIntensity: 2.4 });
   for (const [w, h, d, x, y, z] of wallDefs) {
     const wm = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), concreteMat);
     wm.position.set(x, y, z);
     wm.castShadow = wm.receiveShadow = true;
     scene.add(wm);
+    // glowing neon strip along the top edge of each wall
+    const horizontal = w > d;
+    const stripGeo = horizontal
+      ? new THREE.BoxGeometry(w * 0.98, 0.12, 0.16)
+      : new THREE.BoxGeometry(0.16, 0.12, d * 0.98);
+    const strip = new THREE.Mesh(stripGeo, neonTrimMat);
+    strip.position.set(x, y + h / 2 - 0.2, z + (horizontal ? (z < 0 ? 0.55 : -0.55) : 0) + (horizontal ? 0 : (x < 0 ? 0.55 : -0.55)));
+    scene.add(strip);
   }
 
   // City skyline
@@ -187,6 +252,19 @@ export function initRenderer(gameState: GameState): SceneRefs {
     camera,
     gunGrp,
     flashMat,
+    animateEnv(time: number): void {
+      gridMat.uniforms['time'].value = time;
+      // drift dust slowly upward, wrapping at the ceiling
+      const arr = dustGeo.attributes['position'].array as Float32Array;
+      for (let i = 0; i < DUST_COUNT; i++) {
+        arr[i * 3 + 1] += 0.006 + (i % 5) * 0.001;
+        if (arr[i * 3 + 1] > 18) arr[i * 3 + 1] = 0;
+      }
+      dustGeo.attributes['position'].needsUpdate = true;
+      // keep grid centred on the player for an infinite-floor illusion
+      neonGrid.position.x = Math.round(camera.position.x / 2) * 2;
+      neonGrid.position.z = Math.round(camera.position.z / 2) * 2;
+    },
     themeRefs: {
       skyMat,
       fogRef: scene.fog as THREE.Fog,
@@ -257,6 +335,13 @@ function buildStreetLights(scene: THREE.Scene): THREE.PointLight[] {
     bulb.position.set(x, 5, z); scene.add(bulb);
     const light = new THREE.PointLight(0xffd070, 0, 22);
     light.position.set(x, 5, z); scene.add(light);
+    // volumetric-feel god-ray cone beneath each lamp
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry(2.6, 5, 16, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffe6a0, transparent: true, opacity: 0.06, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    cone.position.set(x, 2.5, z);
+    scene.add(cone);
     return light;
   });
 }

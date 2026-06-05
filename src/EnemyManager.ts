@@ -3,7 +3,7 @@ import type { Enemy, EnemyTypeDef, PooledEnemyBullet, PooledBullet, Powerup, Pow
 import type { GameState } from './GameState';
 import { SFX } from './AudioEngine';
 import { ParticleSystem } from './ParticleSystem';
-import { hudCrosshairHit, hudKillFeed, hudStreakAnnounce, hudNukeFlash, hudNukeBtn, hudUpdateScore, hudBossBar, hudShowBossBar } from './HUD';
+import { hudCrosshairHit, hudHitmarker, hudKillFeed, hudStreakAnnounce, hudNukeFlash, hudNukeBtn, hudUpdateScore, hudBossBar, hudShowBossBar } from './HUD';
 import { saveHighScore } from './GameState';
 import type { PostFX } from './PostFX';
 
@@ -29,16 +29,27 @@ const STREAK_NAMES: { n: number; t: string; m: number }[] = [
 interface EnemyExtra {
   visorMat: THREE.MeshStandardMaterial;
   healthBarFill: THREE.Mesh;
+  bodyMat: THREE.MeshStandardMaterial;
+  hitFlashUntil: number;
   deathLight?: THREE.PointLight;
   phase2Triggered?: boolean;
   bossRings?: THREE.Mesh[];
   enraged?: boolean;
 }
 
+interface DyingEnemy {
+  grp: THREE.Group;
+  life: number;
+  maxLife: number;
+  topple: number;
+  spin: number;
+}
+
 export class EnemyManager {
   enemies: Enemy[] = [];
   powerups: Powerup[] = [];
   private extras = new Map<Enemy, EnemyExtra>();
+  private dying: DyingEnemy[] = [];
 
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -70,7 +81,7 @@ export class EnemyManager {
 
   spawn(wave: number, forcedType?: EnemyTypeDef): void {
     const type = forcedType ?? this.pickType(wave);
-    const { grp, visorMat, healthBarFill } = this.buildMesh(type);
+    const { grp, visorMat, healthBarFill, bodyMat } = this.buildMesh(type);
     const ang = Math.random() * Math.PI * 2;
     const dst = 20 + Math.random() * 8;
     grp.position.set(Math.cos(ang) * dst, 0, Math.sin(ang) * dst);
@@ -83,8 +94,16 @@ export class EnemyManager {
       isBoss: type === ENEMY_TYPES['BOSS'],
     };
     this.enemies.push(en);
-    this.extras.set(en, { visorMat, healthBarFill });
+    this.extras.set(en, { visorMat, healthBarFill, bodyMat, hitFlashUntil: 0 });
     this.scene.add(grp);
+
+    // teleport-in flash
+    this.particles.spawnMuzzleSparks(grp.position.clone().setY(1.2), new THREE.Vector3(0, 1, 0), type.visor, 14);
+    const spawnLight = new THREE.PointLight(type.visor, 8, 12);
+    spawnLight.position.copy(grp.position).setY(1.4);
+    this.scene.add(spawnLight);
+    const fade = () => { spawnLight.intensity -= 0.6; if (spawnLight.intensity > 0) requestAnimationFrame(fade); else this.scene.remove(spawnLight); };
+    requestAnimationFrame(fade);
 
     if (en.isBoss) {
       hudShowBossBar(true, 'WARLORD');
@@ -116,6 +135,8 @@ export class EnemyManager {
 
         en.hp -= b.damage;
         this.updateHealthBar(en);
+        const ex = this.extras.get(en);
+        if (ex) ex.hitFlashUntil = this.tick + 4;
         this.particles.spawnBlood(b.mesh.position.clone(), 0xff2244);
         this.particles.spawnFloatNum(b.mesh.position.clone(), b.damage, en.isBoss ? '#ff4444' : '#ffdd44');
         SFX.hit();
@@ -127,7 +148,10 @@ export class EnemyManager {
         }
 
         if (en.hp <= 0) {
+          hudHitmarker(true);
           this.killEnemy(ei, gameState, weaponSystem);
+        } else {
+          hudHitmarker(false);
         }
         b.active = false;
         b.mesh.visible = false;
@@ -183,9 +207,22 @@ export class EnemyManager {
     }
 
     this.maybeDropPowerup(en.mesh.position.clone());
+    const exDie = this.extras.get(en);
+    if (exDie?.healthBarFill.parent) exDie.healthBarFill.parent.visible = false;
     this.extras.delete(en);
-    this.scene.remove(en.mesh);
     this.enemies.splice(idx, 1);
+
+    if (en.isBoss) {
+      this.scene.remove(en.mesh);
+    } else {
+      // Ragdoll-style topple + sink instead of an instant pop-out
+      this.dying.push({
+        grp: en.mesh,
+        life: 38, maxLife: 38,
+        topple: (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2 + Math.random() * 0.3),
+        spin: (Math.random() - 0.5) * 0.12,
+      });
+    }
 
     const pts = Math.round(en.points * (1 + (gameState.player.wave - 1) * 0.15) * gameState.scoreMultiplier);
     gameState.player.score += pts;
@@ -292,12 +329,27 @@ export class EnemyManager {
       const legR = en.mesh.userData['legR'] as THREE.Mesh | undefined;
       if (legL) legL.position.y = 0.6 * sc + Math.sin(en.lp) * 0.1 * sc;
       if (legR) legR.position.y = 0.6 * sc + Math.sin(en.lp + 3.14) * 0.1 * sc;
+      // Arm swing — opposite phase to the legs
+      const armL = en.mesh.userData['armL'] as THREE.Group | undefined;
+      const armR = en.mesh.userData['armR'] as THREE.Group | undefined;
+      if (armL) armL.rotation.x = Math.sin(en.lp + 3.14) * 0.5;
+      if (armR) armR.rotation.x = Math.sin(en.lp) * 0.5;
 
       // Visor glow pulse
       if (extra?.visorMat) {
         const base = extra.enraged ? 3.5 : 1.4;
         const pulse = base + Math.sin(this.tick * 0.12 + en.lp) * (base * 0.4);
         extra.visorMat.emissiveIntensity = pulse;
+      }
+
+      // White hit-flash decay
+      if (extra?.bodyMat) {
+        if (this.tick < extra.hitFlashUntil) {
+          extra.bodyMat.emissive.setHex(0xffffff);
+          extra.bodyMat.emissiveIntensity = 0.9;
+        } else if (extra.bodyMat.emissiveIntensity !== 0) {
+          extra.bodyMat.emissiveIntensity = 0;
+        }
       }
 
       // Boss rings rotation
@@ -325,6 +377,19 @@ export class EnemyManager {
     // Boss health bar update
     const boss = this.enemies.find(e => e.isBoss);
     if (boss) hudBossBar(boss.hp / boss.maxHp);
+
+    // Dying enemies: topple over, sink into the ground, then despawn
+    for (let i = this.dying.length - 1; i >= 0; i--) {
+      const d = this.dying[i];
+      d.life--;
+      const t = 1 - d.life / d.maxLife;
+      d.grp.rotation.x = d.topple * t;
+      d.grp.rotation.y += d.spin;
+      d.grp.position.y = -t * 1.6;
+      const sc = Math.max(0.01, 1 - t * 0.4);
+      d.grp.scale.setScalar(sc);
+      if (d.life <= 0) { this.scene.remove(d.grp); this.dying.splice(i, 1); }
+    }
   }
 
   updateEnemyBullets(onPlayerHit: (dmg: number) => void): void {
@@ -438,7 +503,7 @@ export class EnemyManager {
     this.powerups.push({ mesh: grp, kind });
   }
 
-  private buildMesh(type: EnemyTypeDef): { grp: THREE.Group; visorMat: THREE.MeshStandardMaterial; healthBarFill: THREE.Mesh } {
+  private buildMesh(type: EnemyTypeDef): { grp: THREE.Group; visorMat: THREE.MeshStandardMaterial; healthBarFill: THREE.Mesh; bodyMat: THREE.MeshStandardMaterial } {
     const grp = new THREE.Group();
     const s = type.scale;
     const bodyMat = new THREE.MeshStandardMaterial({ color: type.color, roughness: 0.45, metalness: 0.7 });
@@ -476,13 +541,19 @@ export class EnemyManager {
     grp.userData['legL'] = buildLeg(-1);
     grp.userData['legR'] = buildLeg(1);
 
-    const buildArm = (sign: number): void => {
+    const buildArm = (sign: number): THREE.Group => {
+      // pivot at the shoulder so the whole arm swings as one unit
+      const pivot = new THREE.Group();
+      pivot.position.set(sign*0.5*s, 1.55*s, 0);
       const up = new THREE.Mesh(new THREE.BoxGeometry(0.18*s, 0.45*s, 0.18*s), bodyMat);
-      up.position.set(sign*0.5*s, 1.35*s, 0); up.castShadow = true; grp.add(up);
+      up.position.set(0, -0.2*s, 0); up.castShadow = true; pivot.add(up);
       const fore = new THREE.Mesh(new THREE.BoxGeometry(0.16*s, 0.4*s, 0.16*s), trimMat);
-      fore.position.set(sign*0.5*s, 0.98*s, 0.02*s); grp.add(fore);
+      fore.position.set(0, -0.57*s, 0.02*s); pivot.add(fore);
+      grp.add(pivot);
+      return pivot;
     };
-    buildArm(-1); buildArm(1);
+    grp.userData['armL'] = buildArm(-1);
+    grp.userData['armR'] = buildArm(1);
 
     if (type.ranged) {
       const wpn = new THREE.Mesh(new THREE.BoxGeometry(0.1*s, 0.1*s, 0.6*s), jointMat);
@@ -525,7 +596,7 @@ export class EnemyManager {
     barGrp.add(healthBarFill);
     grp.add(barGrp);
 
-    return { grp, visorMat, healthBarFill };
+    return { grp, visorMat, healthBarFill, bodyMat };
   }
 
   private pickType(wave: number): EnemyTypeDef {

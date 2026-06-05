@@ -98,6 +98,18 @@ export class ParticleSystem {
     }
   }
 
+  spawnShells(pos: THREE.Vector3, right: THREE.Vector3, count = 1): void {
+    for (let i = 0; i < count; i++) {
+      const slot = this.pool.find(p => !p.active && (p.mesh.material as THREE.MeshBasicMaterial).blending === THREE.NormalBlending);
+      if (!slot) break;
+      const vel = right.clone().multiplyScalar(0.06 + Math.random() * 0.05);
+      vel.y = 0.08 + Math.random() * 0.04;
+      vel.x += (Math.random() - 0.5) * 0.02;
+      vel.z += (Math.random() - 0.5) * 0.02;
+      this.activateSlot(slot, pos, 0xffcc44, vel, 22 + Math.floor(Math.random() * 8), 0.035, false);
+    }
+  }
+
   spawnShockwave(pos: THREE.Vector3, color: number): void {
     const geo = new THREE.TorusGeometry(0.5, 0.12, 6, 32);
     const mat = new THREE.MeshBasicMaterial({ color, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });

@@ -75,6 +75,29 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
 #crosshair::before { width:2px; height:100%; left:50%; transform:translateX(-50%); }
 #crosshair::after  { height:2px; width:100%; top:50%; transform:translateY(-50%); }
 
+#hitmarker {
+  position:absolute; top:50%; left:50%; width:22px; height:22px;
+  transform:translate(-50%,-50%) rotate(45deg) scale(0.6);
+  opacity:0; pointer-events:none;
+}
+#hitmarker::before, #hitmarker::after {
+  content:''; position:absolute; background:#fff; box-shadow:0 0 6px #fff;
+}
+#hitmarker::before { width:2px; height:100%; left:50%; transform:translateX(-50%); }
+#hitmarker::after  { height:2px; width:100%; top:50%; transform:translateY(-50%); }
+#hitmarker.show { animation:hitPop 0.22s ease-out; }
+#hitmarker.kill { animation:killPop 0.32s ease-out; }
+#hitmarker.kill::before, #hitmarker.kill::after { background:#ff3344; box-shadow:0 0 10px #ff0033; }
+@keyframes hitPop { 0%{opacity:1;transform:translate(-50%,-50%) rotate(45deg) scale(1.1);} 100%{opacity:0;transform:translate(-50%,-50%) rotate(45deg) scale(0.6);} }
+@keyframes killPop { 0%{opacity:1;transform:translate(-50%,-50%) rotate(45deg) scale(1.6);} 100%{opacity:0;transform:translate(-50%,-50%) rotate(45deg) scale(0.8);} }
+
+#lowHpPulse {
+  position:absolute; inset:0; pointer-events:none; opacity:0;
+  background:radial-gradient(ellipse at center, transparent 55%, rgba(255,0,0,0.5) 100%);
+}
+#lowHpPulse.active { animation:lowHp 1.1s ease-in-out infinite; }
+@keyframes lowHp { 0%,100%{opacity:0.15;} 50%{opacity:0.6;} }
+
 #dmgVignette {
   position:absolute; inset:0;
   background:radial-gradient(ellipse at center, transparent 45%, rgba(255,0,0,0.65) 100%);
@@ -250,6 +273,8 @@ canvas { display:block; position:fixed; inset:0; width:100%!important; height:10
   </div>
   <div id="cashBox"><span id="cashNum">$0</span></div>
   <div id="crosshair"></div>
+  <div id="hitmarker"></div>
+  <div id="lowHpPulse"></div>
   <div id="dmgVignette"></div>
   <div id="reloadBar">
     <div id="reloadText">RELOADING</div>
