@@ -19,6 +19,9 @@ export interface GameState {
   screenShake: number;
   /** transient upward view recoil applied on top of player pitch, decays each tick */
   camKick: number;
+  /** timestamp until which logic is frozen for impactful kills (ms) */
+  hitStopUntil: number;
+  grenadeStock: number;
   scoreMultiplier: number;
   killStreak: number;
   lastKillTime: number;
@@ -57,6 +60,8 @@ export function createGameState(): GameState {
     },
     screenShake: 0,
     camKick: 0,
+    hitStopUntil: 0,
+    grenadeStock: 3,
     scoreMultiplier: 1,
     killStreak: 0,
     lastKillTime: 0,

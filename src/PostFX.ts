@@ -4,6 +4,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 
 // Custom shader: vignette + film grain + chromatic aberration
 const ScreenFXShader = {
@@ -81,11 +82,19 @@ export function initPostFX(
   composer.addPass(fxPass);
   composer.addPass(new OutputPass());
 
+  // FXAA — anti-aliases the final composited image for crisp edges
+  const pr = renderer.getPixelRatio();
+  const fxaaPass = new ShaderPass(FXAAShader);
+  fxaaPass.material.uniforms['resolution'].value.set(1 / (W * pr), 1 / (H * pr));
+  composer.addPass(fxaaPass);
+
   window.addEventListener('resize', () => {
     const W2 = window.innerWidth;
     const H2 = window.innerHeight;
     composer.setSize(W2, H2);
     bloomPass.resolution.set(W2, H2);
+    const pr2 = renderer.getPixelRatio();
+    fxaaPass.material.uniforms['resolution'].value.set(1 / (W2 * pr2), 1 / (H2 * pr2));
   });
 
   let chromaticBase = 0.002;

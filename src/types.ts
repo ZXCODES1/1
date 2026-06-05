@@ -114,6 +114,7 @@ export interface LevelTheme {
   hemi: number;
   fogNear: number;
   fogFar: number;
+  grid: number;
 }
 
 export interface GameSettings {

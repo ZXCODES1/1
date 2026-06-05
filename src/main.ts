@@ -7,14 +7,16 @@ import { Player } from './Player';
 import { WeaponSystem } from './WeaponSystem';
 import { EnemyManager } from './EnemyManager';
 import { ParticleSystem } from './ParticleSystem';
+import { GrenadeSystem } from './GrenadeSystem';
 import { WaveManager } from './WaveManager';
 import {
   hudShow, hudShowOverlay,
   hudUpdateHealth, hudUpdateAmmo, hudUpdateScore,
   hudUpdateWave, hudUpdateCash,
-  hudPowerupAnnounce,
+  hudPowerupAnnounce, hudRadar, hudGrenadeCount,
 } from './HUD';
 import type { PowerupKind } from './types';
+import type * as THREE from 'three';
 
 // ── Fixed-timestep constants ──────────────────────────────────────────────────
 const LOGIC_HZ = 60;
@@ -29,6 +31,7 @@ const postFX = initPostFX(refs.renderer, refs.scene, refs.camera);
 const particles = new ParticleSystem(refs.scene, refs.camera);
 const enemyMgr = new EnemyManager(refs.scene, refs.camera, particles);
 const weaponSys = new WeaponSystem(refs.scene, refs.camera, refs.gunGrp, refs.flashMat);
+const grenadeSys = new GrenadeSystem(refs.scene, refs.camera, enemyMgr, particles);
 const player = new Player(refs.camera);
 const waveMgr = new WaveManager(refs.themeRefs, enemyMgr, weaponSys);
 
@@ -44,6 +47,12 @@ const input = new Input(refs.renderer.domElement, state, {
   },
   onNuke: () => {
     if (state.phase === 'playing') enemyMgr.useNuke(state);
+  },
+  onGrenade: () => {
+    if (state.phase === 'playing') grenadeSys.throw(state);
+  },
+  onADS: () => {
+    if (state.phase === 'playing') weaponSys.toggleADS();
   },
   onPause: () => togglePause(),
 });
@@ -79,6 +88,7 @@ startBtn.addEventListener('click', () => {
   hudUpdateScore(state);
   hudUpdateWave(state.player.wave);
   hudUpdateCash(state);
+  hudGrenadeCount(state.grenadeStock);
   waveMgr.startInitial(state);
   startMusic(state.player.wave);
 });
@@ -177,9 +187,22 @@ function frame(now: number): void {
 
   if (state.phase !== 'playing') { lastTime = now; return; }
 
+  // Radar refresh (visual only)
+  hudRadar(
+    refs.camera.position.x, refs.camera.position.z, input.state.yaw,
+    enemyMgr.enemies.map((e): { x: number; z: number; boss: boolean } => ({
+      x: e.mesh.position.x, z: e.mesh.position.z, boss: e.isBoss,
+    })),
+  );
+
+  // Hit-stop: freeze logic briefly for crunchy kills (still renders)
+  if (Date.now() < state.hitStopUntil) { lastTime = now; return; }
+
   const rawDelta = (now - lastTime) / 1000;
   lastTime = now;
-  accumulator += Math.min(rawDelta, MAX_DELTA);
+  // Boss death slow-motion scales the logic clock down
+  const timeScale = enemyMgr.slowMoActive ? 0.35 : 1;
+  accumulator += Math.min(rawDelta, MAX_DELTA) * timeScale;
 
   while (accumulator >= TICK_DT) {
     tick(TICK_DT);
@@ -188,7 +211,7 @@ function frame(now: number): void {
 
   const t = now * 0.003;
   const moving = input.state.moveX !== 0 || input.state.moveY !== 0;
-  const sprinting = false;
+  const sprinting = input.state.sprint && input.state.moveY < -0.1;
   weaponSys.animateGun(moving, sprinting, t);
 }
 
@@ -205,16 +228,17 @@ function tick(_dt: number): void {
     { onEnemyKilled: () => weaponSys.onEnemyKilled() },
   );
 
-  enemyMgr.updateEnemies(state, (dmg) => {
-    player.takeDamage(dmg, state, endGame);
+  enemyMgr.updateEnemies(state, (dmg: number, srcPos?: THREE.Vector3) => {
+    player.takeDamage(dmg, state, endGame, srcPos);
     hudUpdateCash(state);
   });
 
-  enemyMgr.updateEnemyBullets((dmg) => {
-    player.takeDamage(dmg, state, endGame);
+  enemyMgr.updateEnemyBullets((dmg: number, srcPos?: THREE.Vector3) => {
+    player.takeDamage(dmg, state, endGame, srcPos);
     hudUpdateCash(state);
   });
 
+  grenadeSys.update(state);
   enemyMgr.updatePowerups(state, collectPowerup);
   particles.update();
   waveMgr.tick(state);

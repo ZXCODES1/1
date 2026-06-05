@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { GameState } from './GameState';
 import type { InputState } from './Input';
-import { hudUpdateHealth, hudDamageFlash } from './HUD';
+import { hudUpdateHealth, hudDamageFlash, hudDamageDir } from './HUD';
 import { SFX } from './AudioEngine';
 import { saveHighScore } from './GameState';
 
@@ -30,8 +30,12 @@ export class Player {
     fwd.y = 0; fwd.normalize();
     const rgt = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
 
-    this.camera.position.addScaledVector(fwd, -jy * PLAYER_SPEED);
-    this.camera.position.addScaledVector(rgt, jx * PLAYER_SPEED);
+    // Sprint boosts forward movement when the stick is pushed forward
+    const sprinting = input.sprint && jy < -0.1;
+    const speed = sprinting ? PLAYER_SPEED * 1.7 : PLAYER_SPEED;
+
+    this.camera.position.addScaledVector(fwd, -jy * speed);
+    this.camera.position.addScaledVector(rgt, jx * speed);
 
     // Jump
     if (input.jumpPressed && state.player.onGround) {
@@ -64,11 +68,20 @@ export class Player {
     }
   }
 
-  takeDamage(amount: number, state: GameState, onDeath: () => void): void {
+  takeDamage(amount: number, state: GameState, onDeath: () => void, srcPos?: THREE.Vector3): void {
     if (!state.player.alive) return;
     const reduction = Math.max(0.4, 1 - state.perks.dmgReductLvl * 0.12);
     state.player.health -= amount * reduction;
     hudDamageFlash();
+    // Directional damage indicator pointing at the attacker
+    if (srcPos) {
+      const fwd = new THREE.Vector3();
+      this.camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+      const rgt = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
+      const to = new THREE.Vector3().subVectors(srcPos, this.camera.position); to.y = 0;
+      const ang = Math.atan2(to.dot(rgt), to.dot(fwd));
+      hudDamageDir(ang);
+    }
     SFX.hurt();
     state.screenShake = Math.max(state.screenShake, 0.15);
     state.killStreak = 0;

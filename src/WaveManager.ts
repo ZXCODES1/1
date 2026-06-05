@@ -4,7 +4,7 @@ import { openShop } from './Shop';
 import { applyTheme, LEVEL_THEMES } from './LevelThemes';
 import type { ThemeRefs } from './LevelThemes';
 import { SFX } from './AudioEngine';
-import { hudAnnounceWave, hudUpdateWave } from './HUD';
+import { hudAnnounceWave, hudUpdateWave, hudGrenadeCount } from './HUD';
 import type { WeaponSystem } from './WeaponSystem';
 
 // Ticks at 60Hz before the next wave auto-starts after enemies clear
@@ -45,6 +45,10 @@ export class WaveManager {
   private advance(state: GameState): void {
     state.player.wave++;
     hudUpdateWave(state.player.wave);
+
+    // Resupply grenades each new wave (capped)
+    state.grenadeStock = Math.min(5, state.grenadeStock + 2);
+    hudGrenadeCount(state.grenadeStock);
 
     // Every 5th completed wave: new zone
     if ((state.player.wave - 1) % 5 === 0 && state.player.wave > 1) {

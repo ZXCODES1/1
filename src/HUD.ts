@@ -134,6 +134,73 @@ export function hudNukeBtn(stock: number): void {
   el('nukeCount').textContent = String(stock);
 }
 
+export function hudGrenadeCount(stock: number): void {
+  const c = el('grenadeCount');
+  if (c) c.textContent = String(stock);
+  const btn = el('grenadeBtn');
+  if (btn) btn.style.opacity = stock > 0 ? '1' : '0.35';
+}
+
+// ── Radar / minimap ─────────────────────────────────────────────────────────
+let radarCtx: CanvasRenderingContext2D | null = null;
+const RADAR_RANGE = 32;
+
+export function hudRadar(
+  px: number, pz: number, yaw: number,
+  enemies: { x: number; z: number; boss: boolean }[],
+): void {
+  if (!radarCtx) {
+    const cv = el<HTMLCanvasElement>('radar');
+    if (!cv) return;
+    radarCtx = cv.getContext('2d');
+    if (!radarCtx) return;
+  }
+  const ctx = radarCtx;
+  const size = ctx.canvas.width;
+  const r = size / 2;
+  ctx.clearRect(0, 0, size, size);
+
+  // backdrop
+  ctx.fillStyle = 'rgba(0,20,12,0.55)';
+  ctx.beginPath(); ctx.arc(r, r, r - 1, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,255,136,0.4)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(r, r, r - 1, 0, Math.PI * 2); ctx.stroke();
+  // cross hairs
+  ctx.strokeStyle = 'rgba(0,255,136,0.15)';
+  ctx.beginPath(); ctx.moveTo(r, 4); ctx.lineTo(r, size - 4); ctx.moveTo(4, r); ctx.lineTo(size - 4, r); ctx.stroke();
+
+  // enemy blips (rotate world into player-facing space)
+  for (const e of enemies) {
+    const dx = e.x - px;
+    const dz = e.z - pz;
+    const rot = -yaw;
+    const lx = dx * Math.cos(rot) - dz * Math.sin(rot);
+    const lz = dx * Math.sin(rot) + dz * Math.cos(rot);
+    const bx = r + (lx / RADAR_RANGE) * (r - 4);
+    const by = r + (lz / RADAR_RANGE) * (r - 4);
+    if (Math.hypot(bx - r, by - r) > r - 3) continue;
+    ctx.fillStyle = e.boss ? '#ffaa00' : '#ff3344';
+    ctx.beginPath(); ctx.arc(bx, by, e.boss ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // player arrow at centre
+  ctx.fillStyle = '#00ff88';
+  ctx.beginPath();
+  ctx.moveTo(r, r - 5); ctx.lineTo(r - 4, r + 4); ctx.lineTo(r + 4, r + 4);
+  ctx.closePath(); ctx.fill();
+}
+
+// ── Directional damage indicators ───────────────────────────────────────────
+export function hudDamageDir(angleRad: number): void {
+  const hud = el('hud');
+  const ind = document.createElement('div');
+  ind.className = 'dmg-dir';
+  // angle: 0 = front, rotate the arc around screen centre
+  ind.style.transform = `translate(-50%,-50%) rotate(${angleRad}rad)`;
+  hud.appendChild(ind);
+  setTimeout(() => ind.remove(), 800);
+}
+
 export function hudPowerupAnnounce(label: string): void {
   hudStreakAnnounce('POWERUP', label);
 }

@@ -65,9 +65,12 @@ export class EnemyManager {
     this.camera = camera;
     this.particles = particles;
 
-    const geo = new THREE.SphereGeometry(0.08, 6, 6);
+    const geo = new THREE.SphereGeometry(0.1, 8, 8);
     for (let i = 0; i < ENEMY_BULLET_POOL; i++) {
-      const mat = new THREE.MeshBasicMaterial({ color: 0xff3300 });
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xff3300, transparent: true, opacity: 0.95,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.visible = false;
       scene.add(mesh);
@@ -179,6 +182,9 @@ export class EnemyManager {
   private killEnemy(idx: number, gameState: GameState, weaponSystem: { onEnemyKilled(): void }): void {
     const en = this.enemies[idx];
     const pos = en.mesh.position.clone().setY(1.2);
+
+    // Micro hit-stop for crunchy impact (boss uses its own longer slow-mo)
+    if (!en.isBoss) gameState.hitStopUntil = Date.now() + 35;
 
     if (en.isBoss) {
       // Boss death: slow motion + massive explosion
@@ -298,7 +304,7 @@ export class EnemyManager {
     setTimeout(strike, 300);
   }
 
-  updateEnemies(_gameState: GameState, onPlayerHit: (dmg: number) => void): void {
+  updateEnemies(_gameState: GameState, onPlayerHit: (dmg: number, srcPos?: THREE.Vector3) => void): void {
     const now = Date.now();
     const camPos = this.camera.position;
     this.tick++;
@@ -369,7 +375,7 @@ export class EnemyManager {
 
       const meleeRange = 1.2 + en.type.scale * 0.4;
       if (d < meleeRange && now - en.lastHit > 900) {
-        onPlayerHit(en.dmg);
+        onPlayerHit(en.dmg, en.mesh.position.clone());
         en.lastHit = now;
       }
     }
@@ -392,14 +398,14 @@ export class EnemyManager {
     }
   }
 
-  updateEnemyBullets(onPlayerHit: (dmg: number) => void): void {
+  updateEnemyBullets(onPlayerHit: (dmg: number, srcPos?: THREE.Vector3) => void): void {
     const camPos = this.camera.position;
     for (const eb of this.bulletPool) {
       if (!eb.active) continue;
       eb.mesh.position.add(eb.vel);
       eb.life--;
       if (eb.mesh.position.distanceTo(camPos) < 0.8) {
-        onPlayerHit(eb.damage);
+        onPlayerHit(eb.damage, eb.mesh.position.clone());
         eb.active = false; eb.mesh.visible = false;
         continue;
       }
@@ -446,6 +452,28 @@ export class EnemyManager {
     this.nukeAll(state);
   }
 
+  /** Area-of-effect damage (grenades, airstrikes). Falls off with distance. */
+  damageArea(pos: THREE.Vector3, radius: number, dmg: number, state: GameState): void {
+    this.particles.spawnExplosion(pos.clone().setY(0.6), 55);
+    this.particles.spawnShockwave(pos, 0xff8800);
+    state.screenShake = Math.max(state.screenShake, 0.35);
+    SFX.grenadeExplosion();
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const en = this.enemies[i];
+      const d = en.mesh.position.distanceTo(pos);
+      if (d > radius) continue;
+      const falloff = 1 - d / radius;
+      en.hp -= Math.round(dmg * falloff);
+      this.updateHealthBar(en);
+      if (en.isBoss && !this.extras.get(en)?.phase2Triggered && en.hp <= en.maxHp * 0.5) {
+        this.triggerBossPhase2(en);
+      }
+      if (en.hp <= 0) {
+        this.killEnemy(i, state, { onEnemyKilled: () => { /* AoE kills don't advance weapon XP */ } });
+      }
+    }
+  }
+
   private updateHealthBar(en: Enemy): void {
     const extra = this.extras.get(en);
     if (!extra) return;
@@ -474,6 +502,9 @@ export class EnemyManager {
       dir.y += (Math.random() - 0.5) * 0.05;
       slot.mesh.position.copy(en.mesh.position).setY(1.4);
       slot.vel.copy(dir).multiplyScalar(en.isBoss ? 0.34 : 0.26);
+      (slot.mesh.material as THREE.MeshBasicMaterial).color.setHex(en.isBoss ? 0xff00aa : 0xff5500);
+      slot.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
+      slot.mesh.scale.set(1, 1, 3.5);
       slot.life = 90;
       slot.damage = en.isBoss ? (enraged ? 24 : 18) : 8;
       slot.active = true;

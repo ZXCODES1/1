@@ -112,6 +112,30 @@ export function initRenderer(gameState: GameState): SceneRefs {
   });
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(200, 24, 16), skyMat));
 
+  // Sun disc — glowing sprite placed in the sky toward the directional light
+  const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    color: 0xfff2c0, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  sunSprite.scale.set(34, 34, 1);
+  sunSprite.position.set(80, 110, 60);
+  scene.add(sunSprite);
+
+  // Star field — invisible by day, bright at night themes (toggled in applyTheme)
+  const STAR_COUNT = 1200;
+  const starPos = new Float32Array(STAR_COUNT * 3);
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const v = new THREE.Vector3().randomDirection().multiplyScalar(190);
+    if (v.y < 0) v.y = -v.y; // upper hemisphere only
+    starPos[i * 3] = v.x; starPos[i * 3 + 1] = v.y; starPos[i * 3 + 2] = v.z;
+  }
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
+    color: 0xffffff, size: 1.1, transparent: true, opacity: 0.0,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+  }));
+  scene.add(stars);
+
   // Ground
   const groundTex = makeAsphaltTexture();
   const floorMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95, metalness: 0.0 });
@@ -138,6 +162,7 @@ export function initRenderer(gameState: GameState): SceneRefs {
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    extensions: { derivatives: true } as { derivatives: boolean },
     vertexShader: /* glsl */`
       varying vec2 vUv;
       void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
@@ -273,6 +298,9 @@ export function initRenderer(gameState: GameState): SceneRefs {
       sun,
       hemiLight,
       streetLights,
+      stars,
+      sunSprite,
+      gridMat,
     },
   };
 }
@@ -350,14 +378,34 @@ function buildGun(camera: THREE.PerspectiveCamera): { gunGrp: THREE.Group; flash
   const gunGrp = new THREE.Group();
   camera.add(gunGrp);
   gunGrp.position.set(0.22, -0.18, -0.4);
-  const gMat = new THREE.MeshLambertMaterial({ color: 0x181818 });
-  gunGrp.add(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.45), gMat));
-  const gBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.35, 8), gMat);
+  const gMat = new THREE.MeshStandardMaterial({ color: 0x14151a, roughness: 0.4, metalness: 0.85 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, roughness: 0.6, metalness: 0.7 });
+
+  // receiver / body
+  gunGrp.add(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.46), gMat));
+  // barrel
+  const gBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.36, 10), gMat);
   gBarrel.rotation.x = Math.PI / 2; gBarrel.position.set(0, 0.02, -0.4);
   gunGrp.add(gBarrel);
-  const accent = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.12, 0.45), new THREE.MeshBasicMaterial({ color: 0x00ff88 }));
-  accent.position.set(0.041, 0, 0);
+  // angled pistol grip
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.2, 0.1), darkMat);
+  grip.position.set(0, -0.16, 0.12); grip.rotation.x = 0.35;
+  gunGrp.add(grip);
+  // magazine
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.17, 0.09), darkMat);
+  mag.position.set(0, -0.15, -0.02); mag.rotation.x = -0.08;
+  gunGrp.add(mag);
+  // glowing front + rear iron sights
+  const sightMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
+  const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.03, 0.01), sightMat);
+  frontSight.position.set(0, 0.1, -0.32); gunGrp.add(frontSight);
+  const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.01), sightMat);
+  rearSight.position.set(0, 0.1, 0.16); gunGrp.add(rearSight);
+  // side accent strip
+  const accent = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.05, 0.4), sightMat);
+  accent.position.set(0.046, 0.01, 0);
   gunGrp.add(accent);
+
   const flashMat = new THREE.MeshBasicMaterial({ color: 0xffff44, transparent: true, opacity: 0 });
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), flashMat);
   flash.position.set(0, 0.02, -0.62);

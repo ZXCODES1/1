@@ -10,10 +10,41 @@ interface ShockwaveRing {
   maxLife: number;
 }
 
+interface Decal {
+  mesh: THREE.Mesh;
+  life: number;
+  maxLife: number;
+}
+
+const MAX_DECALS = 40;
+
+function makeScorchTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const x = c.getContext('2d')!;
+  const g = x.createRadialGradient(64, 64, 4, 64, 64, 64);
+  g.addColorStop(0, 'rgba(0,0,0,0.85)');
+  g.addColorStop(0.5, 'rgba(20,10,5,0.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 128, 128);
+  // a few cracks
+  x.strokeStyle = 'rgba(0,0,0,0.5)';
+  for (let i = 0; i < 8; i++) {
+    const a = Math.random() * Math.PI * 2;
+    x.beginPath(); x.moveTo(64, 64);
+    x.lineTo(64 + Math.cos(a) * 60, 64 + Math.sin(a) * 60);
+    x.lineWidth = Math.random() * 2; x.stroke();
+  }
+  return new THREE.CanvasTexture(c);
+}
+
 export class ParticleSystem {
   private pool: PooledParticle[] = [];
   private shockwaves: ShockwaveRing[] = [];
   private floatNums: FloatNum[] = [];
+  private decals: Decal[] = [];
+  private scorchTex: THREE.CanvasTexture;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private hudEl: HTMLElement;
@@ -26,6 +57,7 @@ export class ParticleSystem {
     this.hudEl = document.getElementById('hud')!;
     this.W = window.innerWidth;
     this.H = window.innerHeight;
+    this.scorchTex = makeScorchTexture();
 
     const geo = new THREE.SphereGeometry(0.05, 4, 4);
     for (let i = 0; i < POOL_SIZE; i++) {
@@ -70,6 +102,32 @@ export class ParticleSystem {
     this.spawn(pos, 0x222222, Math.ceil(count * 0.3), {
       speed: 0.06, gravity: -0.006, life: [40, 80], size: [0.1, 0.22], additive: false,
     });
+    // Scorch mark on the ground below the blast
+    this.spawnDecal(pos, 1.2 + count * 0.02);
+  }
+
+  spawnSmoke(pos: THREE.Vector3, count = 6): void {
+    this.spawn(pos, 0x333333, count, {
+      speed: 0.04, gravity: -0.005, life: [30, 60], size: [0.08, 0.16], additive: false,
+    });
+  }
+
+  spawnDecal(pos: THREE.Vector3, size = 1.4): void {
+    const mat = new THREE.MeshBasicMaterial({
+      map: this.scorchTex, transparent: true, opacity: 0.8,
+      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.rotation.z = Math.random() * Math.PI * 2;
+    mesh.position.set(pos.x, 0.03, pos.z);
+    this.scene.add(mesh);
+    this.decals.push({ mesh, life: 600, maxLife: 600 });
+    // Recycle the oldest decal once the cap is reached
+    if (this.decals.length > MAX_DECALS) {
+      const old = this.decals.shift()!;
+      this.scene.remove(old.mesh);
+    }
   }
 
   spawnBossExplosion(pos: THREE.Vector3): void {
@@ -139,6 +197,15 @@ export class ParticleSystem {
       p.life--;
       (p.mesh.material as THREE.MeshBasicMaterial).opacity = (p.life / p.maxLife) * 0.9;
       if (p.life <= 0) { p.active = false; p.mesh.visible = false; }
+    }
+
+    for (let i = this.decals.length - 1; i >= 0; i--) {
+      const dc = this.decals[i];
+      dc.life--;
+      // hold full opacity, then fade out over the last 120 ticks
+      const mat = dc.mesh.material as THREE.MeshBasicMaterial;
+      mat.opacity = Math.min(0.8, (dc.life / 120) * 0.8);
+      if (dc.life <= 0) { this.scene.remove(dc.mesh); this.decals.splice(i, 1); }
     }
 
     for (let i = this.shockwaves.length - 1; i >= 0; i--) {

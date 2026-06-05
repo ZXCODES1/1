@@ -10,6 +10,7 @@ export interface InputState {
   reloadPressed: boolean;
   nukePressed: boolean;
   pausePressed: boolean;
+  sprint: boolean;
 }
 
 export type InputCallbacks = {
@@ -17,6 +18,8 @@ export type InputCallbacks = {
   onReload: () => void;
   onNuke: () => void;
   onPause: () => void;
+  onGrenade: () => void;
+  onADS: () => void;
 };
 
 const JOYSTICK_MAX_R = 44;
@@ -32,7 +35,10 @@ export class Input {
     reloadPressed: false,
     nukePressed: false,
     pausePressed: false,
+    sprint: false,
   };
+
+  private touchSprint = false;
 
   private keys: Record<string, boolean> = {};
   private joyActive = false;
@@ -72,6 +78,8 @@ export class Input {
       if (e.code === 'KeyF') this.cbs.onShoot();
       if (e.code === 'Escape' || e.code === 'KeyP') this.cbs.onPause();
       if (e.code === 'KeyN') this.cbs.onNuke();
+      if (e.code === 'KeyG') this.cbs.onGrenade();
+      if (e.code === 'KeyQ') this.cbs.onADS();
     });
     document.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
   }
@@ -191,6 +199,20 @@ export class Input {
     nukeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); this.cbs.onNuke(); }, { passive: false });
     nukeBtn.addEventListener('click', () => this.cbs.onNuke());
 
+    const grenadeBtn = document.getElementById('grenadeBtn');
+    if (grenadeBtn) {
+      grenadeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); this.cbs.onGrenade(); }, { passive: false });
+      grenadeBtn.addEventListener('click', () => this.cbs.onGrenade());
+    }
+
+    const sprintBtn = document.getElementById('sprintBtn');
+    if (sprintBtn) {
+      const on = (e: Event) => { e.preventDefault(); this.touchSprint = true; sprintBtn.classList.add('active'); };
+      const off = (e: Event) => { e.preventDefault(); this.touchSprint = false; sprintBtn.classList.remove('active'); };
+      sprintBtn.addEventListener('touchstart', on, { passive: false });
+      sprintBtn.addEventListener('touchend', off, { passive: false });
+    }
+
     document.getElementById('pauseBtn')!.addEventListener('click', () => this.cbs.onPause());
   }
 
@@ -204,5 +226,6 @@ export class Input {
     // keyboard overrides joystick
     if (x !== 0 || y !== 0) { this.state.moveX = x; this.state.moveY = y; }
     this.state.jumpPressed = !!this.keys['Space'];
+    this.state.sprint = this.touchSprint || !!this.keys['ShiftLeft'] || !!this.keys['ShiftRight'];
   }
 }

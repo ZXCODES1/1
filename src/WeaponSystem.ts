@@ -49,9 +49,12 @@ export class WeaponSystem {
     this.muzzleLight = new THREE.PointLight(0xffff44, 0, 8);
     scene.add(this.muzzleLight);
 
-    const geo = new THREE.SphereGeometry(0.04, 5, 5);
+    const geo = new THREE.SphereGeometry(0.05, 6, 6);
     for (let i = 0; i < BULLET_POOL_SIZE; i++) {
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffff44 });
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffff44, transparent: true, opacity: 0.95,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.visible = false;
       scene.add(mesh);
@@ -107,6 +110,9 @@ export class WeaponSystem {
       (slot.mesh.material as THREE.MeshBasicMaterial).color.setHex(w.color);
       slot.mesh.position.copy(this.camera.position).addScaledVector(dir, 0.6);
       slot.vel.copy(dir).multiplyScalar(w.speed);
+      // stretch the bullet into a glowing tracer bolt aligned to travel direction
+      slot.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone());
+      slot.mesh.scale.set(1, 1, 5 + w.speed * 2);
       slot.life = 55;
       slot.damage = w.damage * dmgMul;
       slot.active = true;
@@ -119,9 +125,10 @@ export class WeaponSystem {
     this.muzzleLight.position.copy(muzzlePos);
     setTimeout(() => { this.muzzleLight.intensity = 0; }, 80);
 
-    // Muzzle sparks + ejected brass shells
+    // Muzzle sparks + smoke + ejected brass shells
     if (this.particles) {
       this.particles.spawnMuzzleSparks(muzzlePos, fwd, w.color);
+      this.particles.spawnSmoke(muzzlePos, 2);
       const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
       this.particles.spawnShells(this.camera.position.clone().addScaledVector(fwd, 0.3).addScaledVector(right, 0.15).setY(this.camera.position.y - 0.1), right);
     }
@@ -202,12 +209,15 @@ export class WeaponSystem {
   }
 
   animateGun(moving: boolean, sprinting: boolean, t: number): void {
+    // Sprinting cancels aim-down-sights
+    if (sprinting && this.ads) this.ads = false;
     // ADS lerp
     const adsTarget = this.ads ? 1 : 0;
     this.adsProgress += (adsTarget - this.adsProgress) * 0.12;
 
-    // FOV lerp (hip=72, ads=52)
-    this.adsFov += ((this.ads ? 52 : 72) - this.adsFov) * 0.1;
+    // FOV lerp (ads=52, hip=72, sprint=82 for a sense of speed)
+    const targetFov = this.ads ? 52 : sprinting ? 82 : 72;
+    this.adsFov += (targetFov - this.adsFov) * 0.1;
     this.camera.fov = this.adsFov;
     this.camera.updateProjectionMatrix();
 
